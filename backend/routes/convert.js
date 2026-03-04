@@ -116,8 +116,9 @@ router.post('/to-pdf', upload.single('file'), async (req, res) => {
       }
 
     } else if (ext === '.xlsx') {
-      const XLSX = require('xlsx');
-      const workbook = XLSX.readFile(file.path);
+      const ExcelJS = require('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(file.path);
       const font = await doc.embedFont(StandardFonts.Helvetica);
       const fontSize = 10;
       const margin = 30;
@@ -125,26 +126,28 @@ router.post('/to-pdf', upload.single('file'), async (req, res) => {
       const pageHeight = 595;
       const lineHeight = fontSize * 1.6;
 
-      for (const sheetName of workbook.SheetNames) {
-        const sheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      workbook.eachSheet((sheet) => {
         let page = doc.addPage([pageWidth, pageHeight]);
         let y = pageHeight - margin;
 
-        page.drawText(`Feuille: ${sheetName}`, { x: margin, y, size: fontSize + 2, font, color: rgb(0.2, 0.2, 0.8) });
+        page.drawText(`Feuille: ${sheet.name}`, { x: margin, y, size: fontSize + 2, font, color: rgb(0.2, 0.2, 0.8) });
         y -= lineHeight * 1.5;
 
-        for (const row of rows) {
+        sheet.eachRow((row) => {
           if (y < margin) {
             page = doc.addPage([pageWidth, pageHeight]);
             y = pageHeight - margin;
           }
-          const rowText = row.map(cell => (cell !== undefined && cell !== null ? String(cell) : '')).join(' | ');
+          // exceljs row.values is 1-indexed; index 0 is always undefined
+          const rowText = row.values
+            .slice(1)
+            .map(cell => (cell !== undefined && cell !== null ? String(cell) : ''))
+            .join(' | ');
           const truncated = rowText.length > 100 ? rowText.substring(0, 100) + '...' : rowText;
           page.drawText(truncated, { x: margin, y, size: fontSize, font, color: rgb(0, 0, 0) });
           y -= lineHeight;
-        }
-      }
+        });
+      });
     } else {
       deleteFiles(file.path);
       return res.status(400).json({ error: 'Format non supporté' });
